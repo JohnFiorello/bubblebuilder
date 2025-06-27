@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Bluesky Mute Tool</title>
+  <style>
+    /* 🧾 GLOBAL STYLES */
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      padding: 40px;
+    }
+    #nextBtn {
+      margin-top: 20px;
+      padding: 10px 20px;
+      font-size: 18px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- 🔇 SPLASH SCREEN -->
+  <div id="splashScreen">
+  <img src="assets/logo.png" alt="Bubble Builder Logo" style="max-width: 200px; margin-bottom: 20px;">
+  <h1>🔇 Bubble Builder for Bsky</h1>
+  <p>This tool lets you mute everyone who liked a specific Bluesky post<br>(So you can live in your own little bubble)</p>
+  <p>Click Next to continue.</p>
+  <button id="nextBtn">Next →</button>
+</div>
+
+  <!-- 🔐 CREDENTIALS SCREEN -->
+  <div id="credentialsScreen" style="display: none;">
+    <h2>🔐 Enter Your Bluesky Credentials</h2>
+    <p>These are used securely to log in and fetch the post data.</p>
+
+    <input type="text" id="username" placeholder="Your Bluesky username (e.g. john.bsky.social)" 
+  style="width: 80%; padding: 10px; margin-bottom: 10px;"
+  value="">
+
+    <input type="password" id="password" placeholder="App Password" style="width: 80%; padding: 10px;"><br><br>
+	<input type="checkbox" id="togglePassword"> Show password
+
+	<br>
+	<input type="checkbox" id="rememberPassword"> Remember password
+
+	<br><br>
+
+    <button id="continueToPostBtn">Continue →</button>
+  </div>
+
+  <!-- 📌 POST URL SCREEN -->
+  <div id="postScreen" style="display: none;">
+    <h2>📌 Post Information</h2>
+    <p>Enter the full URL of the post you want to process.</p>
+
+    <input type="text" id="postUrl"
+      placeholder="Paste full Bluesky post URL (e.g. https://bsky.app/profile/...)"
+      style="width: 90%; padding: 10px;"><br><br>
+    <button id="muteBtn">Mute Users</button>
+
+    <!-- 📋 OUTPUT LOG -->
+    <pre id="output" style="text-align: left; max-height: 200px; overflow-y: auto; padding: 10px; background: #f0f0f0; border: 1px solid #ccc;"></pre>
+  </div>
+
+ 
+
+<!-- ⚙️ MAIN SCRIPT LOGIC -->
+<script>
+  // 📦 IMPORT THE MUTE FUNCTIONALITY
+  window.muteLikers = require('./mute-logic.js').muteLikers;
+  window.getLikeCount = require('./mute-logic.js').getLikeCount;
+
+  // 🧠 Main Initialization Block
+  window.addEventListener('DOMContentLoaded', () => {
+    // 💾 Load saved username
+    const savedUsername = localStorage.getItem('bsky_username');
+    if (savedUsername) {
+      document.getElementById('username').value = savedUsername;
+    }
+
+    // 💾 Load saved password
+    const savedPassword = localStorage.getItem('bsky_password');
+    if (savedPassword) {
+      document.getElementById('password').value = savedPassword;
+      document.getElementById('rememberPassword').checked = true;
+    }
+
+    // ▶️ Splash → Credentials Screen
+    document.getElementById('nextBtn').addEventListener('click', () => {
+      document.getElementById('nextBtn').style.display = 'none';
+      document.querySelector('h1').style.display = 'none';
+      document.querySelectorAll('p').forEach(el => el.style.display = 'none');
+      document.getElementById('credentialsScreen').style.display = 'block';
+    });
+
+    // 👁️ Toggle password visibility
+    document.getElementById('togglePassword').addEventListener('change', function () {
+      const pwField = document.getElementById('password');
+      pwField.type = this.checked ? 'text' : 'password';
+    });
+
+    // ▶️ Credentials → Post Info
+    document.getElementById('continueToPostBtn').addEventListener('click', () => {
+      const username = document.getElementById('username').value.trim();
+      if (username) {
+        localStorage.setItem('bsky_username', username);
+      }
+
+      const rememberPassword = document.getElementById('rememberPassword').checked;
+      const password = document.getElementById('password').value.trim();
+
+      if (rememberPassword && password) {
+        localStorage.setItem('bsky_password', password);
+      } else {
+        localStorage.removeItem('bsky_password');
+      }
+
+      document.getElementById('credentialsScreen').style.display = 'none';
+      document.getElementById('postScreen').style.display = 'block';
+    });
+
+    // ⌨️ Enter key navigation
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        const isCredentialsVisible = document.getElementById('credentialsScreen').style.display === 'block';
+        const isPostVisible = document.getElementById('postScreen').style.display === 'block';
+
+        if (isCredentialsVisible) {
+          document.getElementById('continueToPostBtn').click();
+        } else if (isPostVisible) {
+          document.getElementById('muteBtn').click();
+        }
+      }
+    });
+  });
+
+  // 🔇 Mute Button Logic (confirmation + result)
+  document.getElementById('muteBtn').addEventListener('click', async () => {
+    const username = document.getElementById('username').value.trim();
+    const password = document.getElementById('password').value.trim();
+    const postUrl = document.getElementById('postUrl').value.trim();
+
+    const output = document.getElementById('output');
+    output.textContent = "";
+
+    const log = (msg) => {
+      output.textContent += msg + "\n";
+      requestAnimationFrame(() => {
+        output.scrollTop = output.scrollHeight;
+      });
+    };
+
+    const match = postUrl.match(/profile\/([^\/]+)\/post\/([^\/?#]+)/);
+    if (!match) {
+      log("❌ Invalid URL format. Make sure it's a full Bluesky post link.");
+      return;
+    }
+
+    const postAccount = match[1];
+    const postId = match[2];
+
+    let likeCount = 0;
+    try {
+      likeCount = await window.getLikeCount({ username, password, postAccount, postId, log });
+    } catch (err) {
+      log("❌ Failed to fetch like count.");
+      return;
+    }
+
+    if (likeCount === 0) {
+      log("⚠️ No users to mute.");
+      return;
+    }
+
+    const confirmDiv = document.createElement('div');
+    confirmDiv.style.position = 'fixed';
+    confirmDiv.style.top = '50%';
+    confirmDiv.style.left = '50%';
+    confirmDiv.style.transform = 'translate(-50%, -50%)';
+    confirmDiv.style.background = '#fff';
+    confirmDiv.style.border = '2px solid #444';
+    confirmDiv.style.padding = '30px';
+    confirmDiv.style.boxShadow = '0 4px 12px rgba(0,0,0,0.3)';
+    confirmDiv.style.zIndex = '1000';
+
+    confirmDiv.innerHTML = `
+      <p>Mute all <strong>${likeCount}</strong> users who liked this post?</p>
+      <button id="yesMute" style="margin-right: 10px; padding: 10px 20px;">YES</button>
+      <button id="cancelMute" style="padding: 10px 20px;">Cancel</button>
+    `;
+
+    document.body.appendChild(confirmDiv);
+
+    document.getElementById('yesMute').addEventListener('click', async () => {
+      document.body.removeChild(confirmDiv);
+
+      const mutedCount = await window.muteLikers({ username, password, postAccount, postId, log });
+
+      const successPopup = document.createElement('div');
+      successPopup.style.position = 'fixed';
+      successPopup.style.top = '50%';
+      successPopup.style.left = '50%';
+      successPopup.style.transform = 'translate(-50%, -50%)';
+      successPopup.style.background = '#fff';
+      successPopup.style.border = '2px solid #444';
+      successPopup.style.padding = '30px';
+      successPopup.style.boxShadow = '0 4px 12px rgba(0,0,0,0.3)';
+      successPopup.style.zIndex = '1000';
+      successPopup.innerHTML = `
+		<p>✅ Success! ${mutedCount} users muted.</p>
+		<button id="chooseAnother" style="margin: 10px; padding: 10px 20px;">Choose Another Post</button>
+		<button id="closeApp" style="margin: 10px; padding: 10px 20px;">Close</button>
+		<br><br>
+		<a href="https://www.buymeacoffee.com/JohnFiorello" target="_blank" style="display: inline-block; margin-top: 10px; text-decoration: none; color: #fff; background: #FF813F; padding: 10px 20px; border-radius: 5px;">☕ If you found this tool helpful<br>please support me!<br><br><small>value for value support<br>via Buy Me A Coffee</small></a>
+		`;
+      document.body.appendChild(successPopup);
+
+document.getElementById('chooseAnother').addEventListener('click', () => {
+  document.body.removeChild(successPopup);
+  document.getElementById('output').textContent = '';
+  document.getElementById('postUrl').value = '';
+});
+
+document.getElementById('closeApp').addEventListener('click', () => {
+  window.close(); // Works in Electron; on the web does nothing
+  document.body.removeChild(successPopup);
+});
+    });
+
+    document.getElementById('cancelMute').addEventListener('click', () => {
+      document.body.removeChild(confirmDiv);
+      log("🚪 Cancelled by user.");
+    });
+ });
+</script>

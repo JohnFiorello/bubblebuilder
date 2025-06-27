@@ -67,10 +67,6 @@
 
 <!-- ⚙️ MAIN SCRIPT LOGIC -->
 <script>
-  // 📦 IMPORT THE MUTE FUNCTIONALITY
-  window.muteLikers = require('./mute-logic.js').muteLikers;
-  window.getLikeCount = require('./mute-logic.js').getLikeCount;
-
   // 🧠 Main Initialization Block
   window.addEventListener('DOMContentLoaded', () => {
     // 💾 Load saved username
@@ -162,9 +158,18 @@
 
     let likeCount = 0;
     try {
-      likeCount = await window.getLikeCount({ username, password, postAccount, postId, log });
+      // Call backend API to get like count
+      const res = await fetch('/api/getLikeCount', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password, postAccount, postId }),
+      });
+      if (!res.ok) throw new Error(`Server error: ${res.status}`);
+      const data = await res.json();
+      likeCount = data.likeCount;
+      log(`🔢 Like count: ${likeCount}`);
     } catch (err) {
-      log("❌ Failed to fetch like count.");
+      log("❌ Failed to fetch like count: " + err.message);
       return;
     }
 
@@ -195,7 +200,22 @@
     document.getElementById('yesMute').addEventListener('click', async () => {
       document.body.removeChild(confirmDiv);
 
-      const mutedCount = await window.muteLikers({ username, password, postAccount, postId, log });
+      let mutedCount = 0;
+      try {
+        // Call backend API to mute users
+        const res = await fetch('/api/muteLikers', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password, postAccount, postId }),
+        });
+        if (!res.ok) throw new Error(`Server error: ${res.status}`);
+        const data = await res.json();
+        mutedCount = data.mutedCount;
+        log(`🔇 Muted ${mutedCount} users.`);
+      } catch (err) {
+        log("❌ Failed to mute users: " + err.message);
+        return;
+      }
 
       const successPopup = document.createElement('div');
       successPopup.style.position = 'fixed';
@@ -216,21 +236,21 @@
 		`;
       document.body.appendChild(successPopup);
 
-document.getElementById('chooseAnother').addEventListener('click', () => {
-  document.body.removeChild(successPopup);
-  document.getElementById('output').textContent = '';
-  document.getElementById('postUrl').value = '';
-});
+      document.getElementById('chooseAnother').addEventListener('click', () => {
+        document.body.removeChild(successPopup);
+        document.getElementById('output').textContent = '';
+        document.getElementById('postUrl').value = '';
+      });
 
-document.getElementById('closeApp').addEventListener('click', () => {
-  window.close(); // Works in Electron; on the web does nothing
-  document.body.removeChild(successPopup);
-});
+      document.getElementById('closeApp').addEventListener('click', () => {
+        window.close(); // Works in Electron; on the web does nothing
+        document.body.removeChild(successPopup);
+      });
     });
 
     document.getElementById('cancelMute').addEventListener('click', () => {
       document.body.removeChild(confirmDiv);
       log("🚪 Cancelled by user.");
     });
- });
+  });
 </script>
